@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS build
+FROM node:25-bookworm-slim AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile
 COPY apps/browser-worker apps/browser-worker
 RUN pnpm --filter @ipa/browser-worker build \
     && pnpm --filter @ipa/browser-worker deploy --prod --legacy /out
-FROM node:22.22.2-alpine3.23 AS runtime-files
+FROM node:26.5.1-alpine3.23 AS runtime-files
 RUN mkdir -p \
       /rootfs/etc/ssl/certs \
       /rootfs/lib \
