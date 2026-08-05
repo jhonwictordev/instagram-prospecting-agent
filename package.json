@@ -1,0 +1,22 @@
+{
+  "name": "instagram-prospecting-agent",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm -w @ipa/browser-worker run build",
+    "typecheck": "npm -w @ipa/browser-worker run typecheck",
+    "lint": "npm -w @ipa/browser-worker run lint",
+    "test": "npm -w @ipa/browser-worker run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

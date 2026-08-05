@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-instagram_prospecting}
+      POSTGRES_USER: ${POSTGRES_USER:-prospecting}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD}
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.123.68
+    restart: unless-stopped
+    ports: ['127.0.0.1:5678:5678']
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-prospecting}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?configure N8N_ENCRYPTION_KEY}
+      N8N_WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://host.docker.internal:3001}
+      BROWSER_WORKER_API_KEY: ${BROWSER_WORKER_API_KEY:?configure BROWSER_WORKER_API_KEY}
+      N8N_RUNNERS_ENABLED: 'false'
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: 'false'
+      N8N_GIT_NODE_DISABLE_BARE_REPOS: 'true'
+      N8N_DIAGNOSTICS_ENABLED: 'false'
+      TZ: ${TZ:-America/Sao_Paulo}
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes: ['n8n_data:/home/node/.n8n']
+    extra_hosts: ['host.docker.internal:host-gateway']
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:5678/healthz >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  browser-worker:
+    profiles: ['worker']
+    build:
+      context: .
+      dockerfile: apps/browser-worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-prospecting}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-instagram_prospecting}
+      HEADLESS: 'true'
+    ports: ['127.0.0.1:3001:3001']
+    volumes: ['./storage:/app/storage']
+    depends_on:
+      postgres: { condition: service_healthy }
+volumes:
+  postgres_data:
+  n8n_data:

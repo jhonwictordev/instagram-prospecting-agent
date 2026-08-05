@@ -1,0 +1,622 @@
+{
+  "id": "NW8TreDpG83qSy9o",
+  "name": "Instagram Prospecting (safe local)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-prospecting",
+        "responseMode": "responseNode"
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "667d858f-820a-44e9-9cce-f03cc2da0b8e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b=$json.body??$json; const required=['niche','location','message','allowedStart','allowedEnd']; if(required.some(k=>typeof b[k]!=='string'||!b[k].trim())) throw new Error('VALIDATION_ERROR'); const time=/^([01]\\d|2[0-3]):[0-5]\\d$/; if(!time.test(b.allowedStart)||!time.test(b.allowedEnd)) throw new Error('INVALID_ALLOWED_HOURS'); const requested=Number(b.maximumContacts??10); if(!Number.isInteger(requested)||requested<1) throw new Error('INVALID_MAXIMUM_CONTACTS'); const minimum=Number(b.minimumDelaySeconds??90), maximum=Number(b.maximumDelaySeconds??240); if(!Number.isInteger(minimum)||minimum<90) throw new Error('MIN_DELAY_90'); if(!Number.isInteger(maximum)||minimum>maximum||maximum>3600) throw new Error('INVALID_DELAY'); const mode=b.executionMode??'approval'; if(!['approval','automatic'].includes(mode)) throw new Error('INVALID_EXECUTION_MODE'); const max=Math.min(requested,20); const slug=s=>s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,80); const searches=[b.niche,`${b.niche} ${b.location}`,b.state?`${b.niche} ${b.state}`:null,`#${slug(b.niche)}`,`#${slug(b.niche+b.location)}`,...(Array.isArray(b.additionalTerms)?b.additionalTerms:[])].filter(Boolean); return [{json:{...b,niche:b.niche.trim(),location:b.location.trim(),maximumContacts:max,minimumDelaySeconds:minimum,maximumDelaySeconds:maximum,executionMode:mode,dryRun:b.dryRun!==false,additionalTerms:Array.isArray(b.additionalTerms)?b.additionalTerms:[],excludedKeywords:Array.isArray(b.excludedKeywords)?b.excludedKeywords:[],ignoredProfiles:Array.isArray(b.ignoredProfiles)?b.ignoredProfiles:[],searchQueries:[...new Set(searches)]}}];"
+      },
+      "id": "2",
+      "name": "Validate and Build Searches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO campaigns(name,niche,location,outreach_message,execution_mode,maximum_contacts,minimum_delay_seconds,maximum_delay_seconds) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [$json.name || $json.niche, $json.niche, $json.location, $json.message, $json.executionMode, $json.maximumContacts, $json.minimumDelaySeconds, $json.maximumDelaySeconds] }}"
+        }
+      },
+      "id": "3",
+      "name": "Create Campaign",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 0],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO executions(campaign_id,status) VALUES ($1,'running') RETURNING id,campaign_id",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "id": "4",
+      "name": "Create Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [660, 0],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BROWSER_WORKER_URL + '/session/status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.BROWSER_WORKER_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "5",
+      "name": "Session Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.loggedIn && !$json.challengeDetected }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "6",
+      "name": "Logged In?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.challengeDetected ? 'PLATFORM_INTERVENTION_REQUIRED' : 'LOGIN_REQUIRED' }}"
+      },
+      "id": "7",
+      "name": "Login Required",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1320, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Validate and Build Searches').first().json; return cfg.searchQueries.map(query=>({json:{query,maximumProfiles:cfg.maximumContacts}}));"
+      },
+      "id": "8",
+      "name": "Search Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -80]
+    },
+    {
+      "parameters": {
+        "batchSize": 1
+      },
+      "id": "9",
+      "name": "Loop Searches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1540, -80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BROWSER_WORKER_URL + '/search' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.BROWSER_WORKER_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "id": "10",
+      "name": "Search Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, -80],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "jsCode": "const runs=$('Search Instagram').all(); const intervention=runs.find(i=>i.json.status==='platform_intervention_required'); if(intervention) throw new Error('PLATFORM_INTERVENTION_REQUIRED: '+(intervention.json.reason||'manual action required')); const cfg=$('Validate and Build Searches').first().json; const all=runs.flatMap(i=>i.json.profiles??[]).filter(p=>p?.username&&p?.profileUrl); const unique=[...new Map(all.map(p=>[p.username.toLowerCase(),p])).values()].slice(0,cfg.maximumContacts); if(!unique.length) return [{json:{username:'',profileUrl:'',profilesFound:0,noProfiles:true},pairedItem:{item:0}}]; return unique.map(p=>({json:{...p,profilesFound:unique.length,noProfiles:false},pairedItem:{item:0}}));"
+      },
+      "id": "11",
+      "name": "Deduplicate Profiles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, -80]
+    },
+    {
+      "parameters": {
+        "batchSize": 1
+      },
+      "id": "12",
+      "name": "Loop Profiles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2200, -80]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS(SELECT 1 FROM prospects WHERE lower(username)=lower($1) OR profile_url=$2) AS seen, EXISTS(SELECT 1 FROM blocklist WHERE lower(username)=lower($1) OR profile_url=$2) AS blocked",
+        "options": {
+          "queryReplacement": "={{ [$json.username, $json.profileUrl] }}"
+        }
+      },
+      "id": "13",
+      "name": "Check Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2420, -80],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile=$('Loop Profiles').item.json; const cfg=$('Validate and Build Searches').first().json; const ignored=cfg.ignoredProfiles.map(value=>String(value).toLowerCase()); const eligible=profile.noProfiles!==true && $json.seen!==true && $json.blocked!==true && !ignored.includes(String(profile.username).toLowerCase()) && !ignored.includes(String(profile.profileUrl).toLowerCase()); return [{json:{...profile,seen:$json.seen===true,blocked:$json.blocked===true,eligible},pairedItem:{item:0}}];"
+      },
+      "id": "13a",
+      "name": "Evaluate Eligibility",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, -80]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.eligible }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "14",
+      "name": "New and Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2860, -80]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE executions SET messages_skipped=messages_skipped+CASE WHEN $2 THEN 0 ELSE 1 END WHERE id=$1 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [$('Create Execution').first().json.id, $json.noProfiles === true] }}"
+        }
+      },
+      "id": "15",
+      "name": "Record Skipped Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3080, 80],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BROWSER_WORKER_URL + '/profile/analyze' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.BROWSER_WORKER_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { profileUrl: $json.profileUrl, niche: $('Validate and Build Searches').first().json.niche, location: $('Validate and Build Searches').first().json.location, requiredKeywords: $('Validate and Build Searches').first().json.additionalTerms, excludedKeywords: $('Validate and Build Searches').first().json.excludedKeywords } }}"
+      },
+      "id": "16",
+      "name": "Analyze Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, -180],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "jsCode": "if($json.status==='platform_intervention_required') throw new Error('PLATFORM_INTERVENTION_REQUIRED: '+($json.reason||'manual action required')); if(!$json.profile||!$json.qualificationStatus) throw new Error('INVALID_ANALYSIS_RESPONSE'); return $input.all();"
+      },
+      "id": "17",
+      "name": "Guard Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3300, -180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upserted AS (INSERT INTO prospects(username,display_name,profile_url,biography,followers_text,detected_category,detected_location,qualification_score,qualification_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::qualification_status) ON CONFLICT(profile_url) DO UPDATE SET display_name=EXCLUDED.display_name,biography=EXCLUDED.biography,followers_text=EXCLUDED.followers_text,detected_category=EXCLUDED.detected_category,detected_location=EXCLUDED.detected_location,qualification_score=EXCLUDED.qualification_score,qualification_status=EXCLUDED.qualification_status,last_seen_at=now() RETURNING id), counted AS (UPDATE executions SET profiles_analyzed=profiles_analyzed+1,profiles_qualified=profiles_qualified+CASE WHEN $9='qualified' THEN 1 ELSE 0 END,messages_skipped=messages_skipped+CASE WHEN $9='qualified' THEN 0 ELSE 1 END WHERE id=$10) SELECT id FROM upserted",
+        "options": {
+          "queryReplacement": "={{ [$('Guard Analysis').item.json.profile.username, $('Guard Analysis').item.json.profile.displayName || '', $('Guard Analysis').item.json.profile.profileUrl, $('Guard Analysis').item.json.profile.biography || '', $('Guard Analysis').item.json.profile.followersText || '', $('Guard Analysis').item.json.profile.detectedCategory || '', $('Guard Analysis').item.json.profile.detectedLocation || '', $('Guard Analysis').item.json.score, $('Guard Analysis').item.json.qualificationStatus, $('Create Execution').first().json.id] }}"
+        }
+      },
+      "id": "18",
+      "name": "Upsert Prospect",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3300, -180],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('Guard Analysis').item.json.qualified === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "19",
+      "name": "Qualified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [3520, -180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Validate and Build Searches').first().json; const profile=$('Guard Analysis').item.json.profile; let message=cfg.message.replace(/{{displayName}}/g,profile.displayName?.trim()||'').replace(/{{username}}/g,profile.username).replace(/{{niche}}/g,cfg.niche).replace(/{{location}}/g,cfg.location).replace(/\\s+([,.!?])/g,'$1').replace(/\\s+/g,' ').trim(); if(!profile.displayName) message=message.replace(/^(olá|oi)[, ]*[.!-]?\\s*/i,''); if(!message) throw new Error('EMPTY_MESSAGE'); return [{json:{profileUrl:profile.profileUrl,message:message.slice(0,900),executionId:$('Create Execution').first().json.id,prospectId:$json.id,dryRun:cfg.dryRun,mode:cfg.executionMode}}];"
+      },
+      "id": "20",
+      "name": "Build Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3740, -260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.dryRun }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "21",
+      "name": "Dry Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [3960, -260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Validate and Build Searches').first().json; const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()); const now=parts.find(p=>p.type==='hour').value+':'+parts.find(p=>p.type==='minute').value; const inside=cfg.allowedStart<=cfg.allowedEnd ? now>=cfg.allowedStart&&now<=cfg.allowedEnd : now>=cfg.allowedStart||now<=cfg.allowedEnd; if(!inside) throw new Error(`OUTSIDE_ALLOWED_HOURS: ${now}`); return $input.all();"
+      },
+      "id": "22",
+      "name": "Check Operating Window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4180, -340]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ Math.floor(Math.random() * ($('Validate and Build Searches').first().json.maximumDelaySeconds - $('Validate and Build Searches').first().json.minimumDelaySeconds + 1)) + $('Validate and Build Searches').first().json.minimumDelaySeconds }}",
+        "unit": "seconds"
+      },
+      "id": "23",
+      "name": "Wait Between Actions",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [4400, -340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.mode === 'approval' }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "24",
+      "name": "Approval Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [4620, -340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BROWSER_WORKER_URL + '/message/prepare' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.BROWSER_WORKER_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { profileUrl: $json.profileUrl, message: $json.message, executionId: $json.executionId, dryRun: false, mode: 'approval' } }}"
+      },
+      "id": "25",
+      "name": "Prepare Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4840, -420],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BROWSER_WORKER_URL + '/message/send' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.BROWSER_WORKER_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { profileUrl: $json.profileUrl, message: $json.message, executionId: $json.executionId, dryRun: false, mode: 'automatic', approved: false } }}"
+      },
+      "id": "26",
+      "name": "Send Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4840, -260],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "jsCode": "if($json.status==='platform_intervention_required') throw new Error('PLATFORM_INTERVENTION_REQUIRED: '+($json.reason||'manual action required')); if(!['prepared','sent','duplicate_message'].includes($json.status)) throw new Error('INVALID_MESSAGE_RESPONSE: '+JSON.stringify($json)); return $input.all();"
+      },
+      "id": "27",
+      "name": "Guard Message Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5060, -340]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO outreach_messages(campaign_id,prospect_id,execution_id,message,status,prepared_at,sent_at) VALUES ($1,$2,$3,$4,$5,CASE WHEN $5='prepared' THEN now() END,CASE WHEN $5='sent' THEN now() END) ON CONFLICT(campaign_id,prospect_id) DO UPDATE SET message=EXCLUDED.message,status=EXCLUDED.status,prepared_at=EXCLUDED.prepared_at,sent_at=EXCLUDED.sent_at RETURNING id,status",
+        "options": {
+          "queryReplacement": "={{ [$('Create Campaign').first().json.id, $('Build Message').item.json.prospectId, $('Create Execution').first().json.id, $('Build Message').item.json.message, $json.status] }}"
+        }
+      },
+      "id": "28",
+      "name": "Record Outreach",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [5280, -340],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE executions SET messages_prepared=messages_prepared+CASE WHEN $2='prepared' THEN 1 ELSE 0 END,messages_sent=messages_sent+CASE WHEN $2='sent' THEN 1 ELSE 0 END,messages_skipped=messages_skipped+CASE WHEN $2 NOT IN ('prepared','sent') THEN 1 ELSE 0 END WHERE id=$1 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [$('Create Execution').first().json.id, $json.status] }}"
+        }
+      },
+      "id": "29",
+      "name": "Update Message Counts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [5500, -340],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH updated AS (UPDATE executions e SET profiles_found=$1,status=CASE WHEN EXISTS(SELECT 1 FROM outreach_messages o WHERE o.execution_id=e.id AND o.status='prepared') THEN 'awaiting_approval' ELSE 'completed' END,finished_at=CASE WHEN EXISTS(SELECT 1 FROM outreach_messages o WHERE o.execution_id=e.id AND o.status='prepared') THEN NULL ELSE now() END WHERE e.id=$2 RETURNING e.*) SELECT u.id,u.status,u.profiles_found,u.profiles_analyzed,u.profiles_qualified,u.messages_prepared,u.messages_sent,u.messages_skipped,u.started_at,u.finished_at,COALESCE((SELECT json_agg(json_build_object('outreachMessageId',o.id,'approvalToken',o.id,'profileUrl',p.profile_url,'message',o.message)) FROM outreach_messages o JOIN prospects p ON p.id=o.prospect_id WHERE o.execution_id=u.id AND o.status='prepared'),'[]'::json) AS approvals FROM updated u",
+        "options": {
+          "queryReplacement": "={{ [$('Deduplicate Profiles').all().filter(i=>!i.json.noProfiles).length, $('Create Execution').first().json.id] }}"
+        }
+      },
+      "id": "30",
+      "name": "Finalize Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [5720, -80],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres prospecting"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { executionId: $json.id, status: $json.status, dryRun: $('Validate and Build Searches').first().json.dryRun, profilesFound: $json.profiles_found, profilesAnalyzed: $json.profiles_analyzed, profilesQualified: $json.profiles_qualified, messagesPrepared: $json.messages_prepared, messagesSent: $json.messages_sent, messagesSkipped: $json.messages_skipped, approvals: $json.approvals, approvalEndpoint: $json.status === 'awaiting_approval' ? 'POST http://localhost:3001/message/approve' : null, note: $json.status === 'awaiting_approval' ? 'Messages prepared; explicit human approval is required for each item.' : 'Execution completed.' } }}"
+      },
+      "id": "31",
+      "name": "Final Report",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [5940, -80]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate and Build Searches", "type": "main", "index": 0 }]]
+    },
+    "Validate and Build Searches": {
+      "main": [[{ "node": "Create Campaign", "type": "main", "index": 0 }]]
+    },
+    "Create Campaign": { "main": [[{ "node": "Create Execution", "type": "main", "index": 0 }]] },
+    "Create Execution": { "main": [[{ "node": "Session Status", "type": "main", "index": 0 }]] },
+    "Session Status": { "main": [[{ "node": "Logged In?", "type": "main", "index": 0 }]] },
+    "Logged In?": {
+      "main": [
+        [{ "node": "Search Items", "type": "main", "index": 0 }],
+        [{ "node": "Login Required", "type": "main", "index": 0 }]
+      ]
+    },
+    "Search Items": { "main": [[{ "node": "Loop Searches", "type": "main", "index": 0 }]] },
+    "Loop Searches": {
+      "main": [
+        [{ "node": "Deduplicate Profiles", "type": "main", "index": 0 }],
+        [{ "node": "Search Instagram", "type": "main", "index": 0 }]
+      ]
+    },
+    "Search Instagram": { "main": [[{ "node": "Loop Searches", "type": "main", "index": 0 }]] },
+    "Deduplicate Profiles": { "main": [[{ "node": "Loop Profiles", "type": "main", "index": 0 }]] },
+    "Loop Profiles": {
+      "main": [
+        [{ "node": "Finalize Execution", "type": "main", "index": 0 }],
+        [{ "node": "Check Database", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Database": {
+      "main": [[{ "node": "Evaluate Eligibility", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Eligibility": {
+      "main": [[{ "node": "New and Allowed?", "type": "main", "index": 0 }]]
+    },
+    "New and Allowed?": {
+      "main": [
+        [{ "node": "Analyze Profile", "type": "main", "index": 0 }],
+        [{ "node": "Record Skipped Profile", "type": "main", "index": 0 }]
+      ]
+    },
+    "Record Skipped Profile": {
+      "main": [[{ "node": "Loop Profiles", "type": "main", "index": 0 }]]
+    },
+    "Analyze Profile": { "main": [[{ "node": "Guard Analysis", "type": "main", "index": 0 }]] },
+    "Guard Analysis": { "main": [[{ "node": "Upsert Prospect", "type": "main", "index": 0 }]] },
+    "Upsert Prospect": { "main": [[{ "node": "Qualified?", "type": "main", "index": 0 }]] },
+    "Qualified?": {
+      "main": [
+        [{ "node": "Build Message", "type": "main", "index": 0 }],
+        [{ "node": "Loop Profiles", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Message": { "main": [[{ "node": "Dry Run?", "type": "main", "index": 0 }]] },
+    "Dry Run?": {
+      "main": [
+        [{ "node": "Loop Profiles", "type": "main", "index": 0 }],
+        [{ "node": "Check Operating Window", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Operating Window": {
+      "main": [[{ "node": "Wait Between Actions", "type": "main", "index": 0 }]]
+    },
+    "Wait Between Actions": {
+      "main": [[{ "node": "Approval Mode?", "type": "main", "index": 0 }]]
+    },
+    "Approval Mode?": {
+      "main": [
+        [{ "node": "Prepare Message", "type": "main", "index": 0 }],
+        [{ "node": "Send Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Message": {
+      "main": [[{ "node": "Guard Message Result", "type": "main", "index": 0 }]]
+    },
+    "Send Message": { "main": [[{ "node": "Guard Message Result", "type": "main", "index": 0 }]] },
+    "Guard Message Result": {
+      "main": [[{ "node": "Record Outreach", "type": "main", "index": 0 }]]
+    },
+    "Record Outreach": {
+      "main": [[{ "node": "Update Message Counts", "type": "main", "index": 0 }]]
+    },
+    "Update Message Counts": {
+      "main": [[{ "node": "Loop Profiles", "type": "main", "index": 0 }]]
+    },
+    "Finalize Execution": { "main": [[{ "node": "Final Report", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "CYbTjLIq1HeJogMh"
+  },
+  "active": true,
+  "versionId": "2d6e5aa0-37ac-4f07-93cc-7bb07b20bd64",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

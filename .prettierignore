@@ -1,0 +1,8 @@
+node_modules/
+dist/
+storage/
+apps/browser-worker/storage/
+.env
+.env.example
+pnpm-lock.yaml
+database/migrations/

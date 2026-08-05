@@ -1,0 +1,57 @@
+{
+  "id": "CYbTjLIq1HeJogMh",
+  "name": "Instagram Prospecting - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE executions SET status='error', finished_at=now(), error_message=$1 WHERE status='running'",
+        "options": {
+          "queryReplacement": "={{ [$json.execution.error.message || 'Unknown error'] }}"
+        }
+      },
+      "id": "e2",
+      "name": "Register Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [240, 0],
+      "credentials": {
+        "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres prospecting" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "TELEGRAM_CHAT_ID",
+        "text": "={{ 'Instagram prospecting stopped: ' + ($json.execution?.error?.message || 'unknown error') }}",
+        "additionalFields": {}
+      },
+      "id": "e3",
+      "name": "Notify Telegram (placeholder)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 0],
+      "disabled": true,
+      "credentials": {
+        "telegramApi": { "id": "TELEGRAM_CREDENTIAL_ID", "name": "Telegram placeholder" }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": { "main": [[{ "node": "Register Error", "type": "main", "index": 0 }]] },
+    "Register Error": {
+      "main": [[{ "node": "Notify Telegram (placeholder)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "d7603824-2b7a-464d-b679-c96141749071",
+  "tags": []
+}
