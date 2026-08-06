@@ -1,16 +1,16 @@
 # Instagram Prospecting Agent
 
-Automação local e conservadora para localizar perfis comerciais públicos, qualificá-los e preparar mensagens. O envio é bloqueado por padrão. Este projeto não resolve CAPTCHA, não usa stealth/proxy e não contorna limites ou intervenções do Instagram. Revise os Termos do Instagram e a legislação aplicável (incluindo LGPD) antes de usar.
+A conservative, locally run automation for finding public business profiles, qualifying them, and preparing messages. Sending is blocked by default. This project does not solve CAPTCHAs, use stealth/proxies, or bypass Instagram limits or interventions. Review Instagram's Terms and applicable laws (including data-protection regulations) before using it.
 
-## Requisitos
+## Requirements
 
-- Windows 10/11, Node.js 22.13+ e Brave instalado.
-- Docker Desktop com WSL 2 para PostgreSQL e n8n.
-- Uma conta do Instagram acessada manualmente. Nunca coloque usuário, senha ou cookies no `.env`.
+- Windows 10/11, Node.js 22.13+, and Brave installed.
+- Docker Desktop with WSL 2 for PostgreSQL and n8n.
+- An Instagram account accessed manually. Never put a username, password, or cookies in `.env`.
 
-## Instalação
+## Installation
 
-No PowerShell:
+In PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
@@ -20,11 +20,11 @@ npm.cmd test
 docker compose up -d postgres n8n
 ```
 
-Edite `.env` e troque obrigatoriamente `POSTGRES_PASSWORD`, `N8N_ENCRYPTION_KEY` e `BROWSER_WORKER_API_KEY` (mínimo de 16 caracteres). Gere segredos, por exemplo, com `[guid]::NewGuid().ToString('N')`.
+Edit `.env` and make sure to replace `POSTGRES_PASSWORD`, `N8N_ENCRYPTION_KEY`, and `BROWSER_WORKER_API_KEY` (minimum 16 characters). For example, generate secrets with `[guid]::NewGuid().ToString('N')`.
 
-### Opção A — recomendada no Windows
+### Option A — recommended on Windows
 
-Execute PostgreSQL e n8n no Docker e o browser-worker no Windows, permitindo que ele abra o Brave gráfico:
+Run PostgreSQL and n8n in Docker and run browser-worker on Windows, allowing it to open the graphical Brave browser:
 
 ```powershell
 docker compose up -d postgres n8n
@@ -32,93 +32,93 @@ npm.cmd -w @ipa/browser-worker run dev
 Invoke-RestMethod http://localhost:3001/health
 ```
 
-O n8n usa `http://host.docker.internal:3001`. Se o Brave não for detectado, configure `BRAVE_EXECUTABLE_PATH`. `BRAVE_USER_DATA_DIR` deve apontar para um perfil dedicado e persistente; não use seu perfil pessoal principal.
+n8n uses `http://host.docker.internal:3001`. If Brave is not detected, configure `BRAVE_EXECUTABLE_PATH`. `BRAVE_USER_DATA_DIR` must point to a dedicated, persistent profile; do not use your main personal profile.
 
-### Opção B — worker em contêiner
+### Option B — worker in a container
 
-Somente para um host Linux com navegador disponível e configuração gráfica adequada; o contêiner Linux não abre o Brave instalado no Windows. Para execução headless compatível:
+Use this only on a Linux host with an available browser and suitable graphical configuration; the Linux container cannot open Brave installed on Windows. For compatible headless execution:
 
 ```powershell
 docker compose --profile worker up -d --build
 ```
 
-O Dockerfile não instala o Brave. Monte/instale um executável compatível e configure `BRAVE_EXECUTABLE_PATH`; para login inicial gráfico, prefira a opção A.
+The Dockerfile does not install Brave. Mount or install a compatible executable and configure `BRAVE_EXECUTABLE_PATH`; for the initial graphical login, prefer Option A.
 
-## Login manual
+## Manual login
 
-Com o worker ativo:
+With the worker running:
 
 ```powershell
 $headers = @{ Authorization = "Bearer $((Get-Content .env | Select-String '^BROWSER_WORKER_API_KEY=').Line.Split('=')[1])" }
 Invoke-RestMethod -Method Post -Uri http://localhost:3001/session/open -Headers $headers
 ```
 
-Faça login manualmente no Brave. Depois consulte `/session/status`. CAPTCHA, checkpoint, atividade incomum ou bloqueio retornam `platform_intervention_required` e exigem interrupção e ação humana.
+Log in manually through Brave. Then check `/session/status`. A CAPTCHA, checkpoint, unusual activity warning, or block returns `platform_intervention_required` and requires the process to stop for human action.
 
-## n8n e workflows
+## n8n and workflows
 
-Abra `http://localhost:5678`, crie as credenciais PostgreSQL (`host=postgres`, banco/usuário/senha do `.env`) e importe, nesta ordem:
+Open `http://localhost:5678`, create the PostgreSQL credentials (`host=postgres`, using the database, username, and password from `.env`), and import these files in order:
 
 1. `n8n/workflows/error-handler.json`;
 2. `n8n/workflows/instagram-prospecting.json`.
 
-Substitua os placeholders de credenciais, salve o workflow de erro, copie seu ID e configure-o como workflow de erro do fluxo principal. Configure a credencial Telegram placeholder ou substitua esse nó por e-mail. Ative o workflow e chame o webhook exibido pelo n8n.
+Replace the credential placeholders, save the error workflow, copy its ID, and configure it as the main workflow's error workflow. Configure the placeholder Telegram credential or replace that node with email. Activate the workflow and call the webhook shown by n8n.
 
-Exemplo seguro:
+Safe example:
 
 ```powershell
 $body = @{
-  niche='imobiliária'; location='Maceió'; additionalTerms=@('imóveis Maceió')
-  message='Olá {{displayName}}, trabalho com soluções para {{niche}} em {{location}}.'
+  niche='real estate'; location='Maceio'; additionalTerms=@('real estate Maceio')
+  message='Hello {{displayName}}, I work with solutions for {{niche}} businesses in {{location}}.'
   maximumContacts=5; minimumDelaySeconds=90; maximumDelaySeconds=240
   allowedStart='09:00'; allowedEnd='18:00'; executionMode='approval'
-  excludedKeywords=@('pessoal','fã clube'); dryRun=$true
+  excludedKeywords=@('personal','fan club'); dryRun=$true
 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri http://localhost:5678/webhook/instagram-prospecting -ContentType application/json -Body $body
 ```
 
-O workflow principal possui 32 nós e implementa validação, campanha/execução, verificação de sessão, combinações de busca, deduplicação, blocklist, processamento sequencial, classificação, personalização, janela operacional, espera aleatória, preparação/envio e relatório. As requisições ao Instagram têm até três tentativas; qualquer alerta da plataforma interrompe a execução.
+The main workflow contains 32 nodes and implements validation, campaign and execution management, session verification, search combinations, deduplication, blocklist checks, sequential processing, classification, personalization, operating windows, randomized waits, message preparation or sending, and reporting. Instagram requests are attempted up to three times; any platform alert stops execution.
 
-O Telegram do workflow de erro é um placeholder desativado. Depois de criar a credencial real e informar o chat, habilite o nó `Notify Telegram (placeholder)`. O registro do erro no PostgreSQL funciona independentemente da notificação.
+The error workflow's Telegram node is a disabled placeholder. After creating a real credential and setting the chat, enable the `Notify Telegram (placeholder)` node. PostgreSQL error logging works independently of the notification.
 
-## Modos e interrupção
+## Modes and interruption
 
-- `dryRun=true`: nunca envia.
-- `approval` (padrão): o workflow chama `/message/prepare`, registra a mensagem e retorna `status=awaiting_approval`, além de um `outreachMessageId` e um `approvalToken` por item. Nada é enviado nessa etapa.
-- `automatic`: requer simultaneamente `AUTOMATIC_MODE_ENABLED=true`, `dryRun=false` e ausência de emergência.
-- Emergência: defina `EMERGENCY_STOP=true` e reinicie o worker. Novos envios serão recusados.
+- `dryRun=true`: never sends messages.
+- `approval` (default): the workflow calls `/message/prepare`, records the message, and returns `status=awaiting_approval`, along with an `outreachMessageId` and an `approvalToken` for each item. Nothing is sent at this stage.
+- `automatic`: simultaneously requires `AUTOMATIC_MODE_ENABLED=true`, `dryRun=false`, and no emergency stop.
+- Emergency stop: set `EMERGENCY_STOP=true` and restart the worker. New sends will be refused.
 
-Os limites padrão são 10 contatos, teto absoluto 20 e intervalo de 90–240 segundos. O banco possui índice que permite apenas uma execução `running`. URLs/usernames, campanha+prospect e prospect+mensagem têm restrições de unicidade. A tabela `blocklist` é permanente.
+The default limits are 10 contacts, an absolute maximum of 20, and a 90–240 second interval. A database index permits only one `running` execution. URLs/usernames, campaign+prospect, and prospect+message have uniqueness constraints. The `blocklist` table is permanent.
 
-### Aprovação humana explícita
+### Explicit human approval
 
-Revise no Brave o texto preenchido e os campos retornados em `approvals`. Para aprovar um item específico, chame a rota local protegida. O token deve corresponder ao ID da mensagem preparada:
+In Brave, review the filled-in text and the fields returned in `approvals`. To approve a specific item, call the protected local endpoint. The token must match the prepared message ID:
 
 ```powershell
 $headers = @{ Authorization = "Bearer $((Get-Content .env | Select-String '^BROWSER_WORKER_API_KEY=').Line.Split('=')[1])" }
 $approval = @{
-  outreachMessageId = 'UUID_RETORNADO_PELO_WORKFLOW'
-  approvalToken = 'UUID_RETORNADO_PELO_WORKFLOW'
+  outreachMessageId = 'UUID_RETURNED_BY_THE_WORKFLOW'
+  approvalToken = 'UUID_RETURNED_BY_THE_WORKFLOW'
   approved = $true
 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri http://localhost:3001/message/approve -Headers $headers -ContentType application/json -Body $approval
 ```
 
-A rota só aceita mensagens previamente registradas como `prepared`, respeita `EMERGENCY_STOP`, verifica novamente se já existe mensagem idêntica na conversa e atualiza o banco após o envio. Não reutilize tokens e não aprove mensagens sem revisar o perfil e o conteúdo.
+The endpoint accepts only messages previously recorded as `prepared`, honors `EMERGENCY_STOP`, checks again whether an identical message already exists in the conversation, and updates the database after sending. Do not reuse tokens or approve messages without reviewing the profile and content.
 
-## Consultas úteis
+## Useful queries
 
 ```powershell
 docker compose exec postgres psql -U prospecting -d instagram_prospecting -c "select * from executions order by started_at desc;"
 docker compose exec postgres psql -U prospecting -d instagram_prospecting -c "select username,qualification_status,do_not_contact from prospects;"
-docker compose exec postgres psql -U prospecting -d instagram_prospecting -c "insert into blocklist(username,reason) values ('perfil','solicitação de exclusão');"
+docker compose exec postgres psql -U prospecting -d instagram_prospecting -c "insert into blocklist(username,reason) values ('profile','deletion request');"
 ```
 
-## Seletores e diagnóstico
+## Selectors and diagnostics
 
-Todos os seletores estão em `apps/browser-worker/src/instagram/selectors.ts`, com alternativas em português e inglês. Quando o compositor falha, o worker salva screenshot local mascarando o campo de mensagem em `storage/diagnostics`; revise e apague imagens após o diagnóstico. Nunca as envie automaticamente.
+All selectors are stored in `apps/browser-worker/src/instagram/selectors.ts`, with Portuguese and English alternatives. When the composer fails, the worker saves a local screenshot with the message field masked in `storage/diagnostics`; review and delete images after troubleshooting. Never send them automatically.
 
-## Desenvolvimento e testes
+## Development and testing
 
 ```powershell
 npm.cmd run typecheck
@@ -127,19 +127,19 @@ npm.cmd test
 npm.cmd run build
 ```
 
-Os testes usam mocks e não acessam contas reais. Cobrem validação/teto, deduplicação, personalização, blocklist, contador de erros, autenticação, dry-run, aprovação e bloqueio do automático.
+Tests use mocks and do not access real accounts. They cover validation and limits, deduplication, personalization, blocklists, error counting, authentication, dry-run mode, approval, and automatic-mode blocking.
 
-## Solução de problemas
+## Troubleshooting
 
-- `Brave not found`: defina o caminho absoluto em `BRAVE_EXECUTABLE_PATH`.
-- `LOGIN_REQUIRED`: execute `/session/open` e faça login manual.
-- `401 UNAUTHORIZED`: confira se o mesmo `BROWSER_WORKER_API_KEY` está no worker e no n8n.
-- n8n não alcança o worker: mantenha `BROWSER_WORKER_URL=http://host.docker.internal:3001`.
-- migration não reaplicada: scripts de init só rodam em volume PostgreSQL novo; aplique o SQL manualmente em bancos existentes.
-- seletor falhou: consulte `storage/diagnostics`, atualize apenas `selectors.ts` e rode os testes.
-- `platform_intervention_required`: pare; resolva manualmente no navegador. Não automatize o contorno.
-- n8n demora para iniciar: em computadores com poucos núcleos, aguarde o log `Activated workflow` antes de chamar o webhook; o `/healthz` pode responder alguns instantes antes do registro da rota.
+- `Brave not found`: set the absolute path in `BRAVE_EXECUTABLE_PATH`.
+- `LOGIN_REQUIRED`: call `/session/open` and log in manually.
+- `401 UNAUTHORIZED`: confirm that the same `BROWSER_WORKER_API_KEY` is configured in both the worker and n8n.
+- n8n cannot reach the worker: keep `BROWSER_WORKER_URL=http://host.docker.internal:3001`.
+- Migration was not reapplied: initialization scripts run only with a new PostgreSQL volume; apply the SQL manually to existing databases.
+- Selector failed: check `storage/diagnostics`, update only `selectors.ts`, and run the tests.
+- `platform_intervention_required`: stop and resolve the issue manually in the browser. Do not automate a bypass.
+- n8n takes a long time to start: on computers with few CPU cores, wait for the `Activated workflow` log before calling the webhook; `/healthz` may respond shortly before the route is registered.
 
-## Limitações conhecidas
+## Known limitations
 
-O Instagram muda interface e seletores sem aviso; a extração é heurística e não usa API oficial. Seguidores, categoria e localização podem não estar disponíveis. A aprovação é feita pela API REST local, não por uma tela dedicada no n8n. A aplicação não garante conformidade legal nem permissão para mensagens; isso cabe ao operador. O botão de emergência via `.env` exige reinício do worker.
+Instagram changes its interface and selectors without notice; extraction is heuristic and does not use the official API. Follower counts, category, and location may be unavailable. Approval is performed through the local REST API, not through a dedicated n8n interface. The application does not guarantee legal compliance or permission to send messages; the operator is responsible for both. The `.env` emergency-stop switch requires restarting the worker.
