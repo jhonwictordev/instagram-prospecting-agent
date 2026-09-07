@@ -41,6 +41,14 @@ describe('api', () => {
     expect((await request(createApp(config, service)).get('/health')).status).toBe(200);
   });
 
+  it('serves a synthetic review demo without credentials or Instagram', async () => {
+    const response = await request(createApp(config, service)).get('/review?demo=1');
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('SYNTHETIC DEMO');
+    expect(response.text).toContain('cafe_demo');
+    expect(response.text).toContain('sending disabled');
+  });
+
   it('requires bearer authentication', async () => {
     expect((await request(createApp(config, service)).get('/session/status')).status).toBe(401);
     expect(
@@ -112,5 +120,32 @@ describe('api', () => {
     expect(rejected.status).toBe(403);
     expect(approved.status).toBe(200);
     expect(repository.markSent).toHaveBeenCalledWith(id);
+  });
+
+  it('lists prepared messages and toggles the emergency stop at runtime', async () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    const repository = {
+      listPrepared: vi.fn(async () => [{ id, executionId: id, profileUrl: message.profileUrl, message: message.message }]),
+      preparedMessage: vi.fn(async () => ({ id, executionId: id, profileUrl: message.profileUrl, message: message.message })),
+      markSent: vi.fn(async () => undefined),
+    } as any;
+    const app = createApp(config, service, repository);
+    const auth = { Authorization: `Bearer ${config.BROWSER_WORKER_API_KEY}` };
+
+    const listed = await request(app).get('/messages/prepared').set(auth);
+    expect(listed.status).toBe(200);
+    expect(listed.body.messages).toHaveLength(1);
+
+    const stopped = await request(app).post('/controls/emergency-stop').set(auth).send({ active: true });
+    expect(stopped.body.emergencyStop).toBe(true);
+    const blocked = await request(app)
+      .post('/message/approve')
+      .set(auth)
+      .send({ outreachMessageId: id, approvalToken: id, approved: true });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.status).toBe('emergency_stop');
+
+    const resumed = await request(app).post('/controls/emergency-stop').set(auth).send({ active: false });
+    expect(resumed.body.emergencyStop).toBe(false);
   });
 });

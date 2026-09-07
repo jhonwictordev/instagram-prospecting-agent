@@ -2,6 +2,12 @@
 
 A conservative, locally run automation for finding public business profiles, qualifying them, and preparing messages. Sending is blocked by default. This project does not solve CAPTCHAs, use stealth/proxies, or bypass Instagram limits or interventions. Review Instagram's Terms and applicable laws (including data-protection regulations) before using it.
 
+## Safe demonstration and review interface
+
+- Open `http://localhost:3001/review?demo=1` for a synthetic, read-only demonstration. It uses fictional profiles and never requires an Instagram account, database, API key, or browser session.
+- Open `http://localhost:3001/review` for the real local review queue. Enter the worker API key, inspect each profile and exact message, and approve one item at a time.
+- The same screen can activate or release the runtime emergency stop immediately. Restarting the worker is no longer required.
+
 ## Requirements
 
 - Windows 10/11, Node.js 22.13+, and Brave installed.
@@ -86,7 +92,7 @@ The error workflow's Telegram node is a disabled placeholder. After creating a r
 - `dryRun=true`: never sends messages.
 - `approval` (default): the workflow calls `/message/prepare`, records the message, and returns `status=awaiting_approval`, along with an `outreachMessageId` and an `approvalToken` for each item. Nothing is sent at this stage.
 - `automatic`: simultaneously requires `AUTOMATIC_MODE_ENABLED=true`, `dryRun=false`, and no emergency stop.
-- Emergency stop: set `EMERGENCY_STOP=true` and restart the worker. New sends will be refused.
+- Emergency stop: initialize it with `EMERGENCY_STOP=true`, or toggle it immediately from `/review`. New sends and approvals are refused while active.
 
 The default limits are 10 contacts, an absolute maximum of 20, and a 90–240 second interval. A database index permits only one `running` execution. URLs/usernames, campaign+prospect, and prospect+message have uniqueness constraints. The `blocklist` table is permanent.
 
@@ -142,4 +148,4 @@ Tests use mocks and do not access real accounts. They cover validation and limit
 
 ## Known limitations
 
-Instagram changes its interface and selectors without notice; extraction is heuristic and does not use the official API. Follower counts, category, and location may be unavailable. Approval is performed through the local REST API, not through a dedicated n8n interface. The application does not guarantee legal compliance or permission to send messages; the operator is responsible for both. The `.env` emergency-stop switch requires restarting the worker.
+Instagram changes its interface and selectors without notice; extraction is heuristic and does not use the official API. Follower counts, category, and location may be unavailable. The review interface controls the local REST API; it is not embedded in n8n. Runtime emergency-stop state is intentionally process-local and resets to the `.env` value after a restart. The application does not guarantee legal compliance or permission to send messages; the operator is responsible for both.

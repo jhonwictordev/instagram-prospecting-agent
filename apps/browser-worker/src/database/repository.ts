@@ -68,6 +68,29 @@ export class Repository {
     };
   }
 
+  async listPrepared(limit = 50): Promise<PreparedMessage[]> {
+    const result = await this.pool.query<{
+      id: string;
+      execution_id: string;
+      profile_url: string;
+      message: string;
+    }>(
+      `SELECT o.id, o.execution_id, p.profile_url, o.message
+         FROM outreach_messages o
+         JOIN prospects p ON p.id = o.prospect_id
+        WHERE o.status = 'prepared'
+        ORDER BY o.created_at ASC
+        LIMIT $1`,
+      [Math.min(Math.max(limit, 1), 100)],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      executionId: row.execution_id,
+      profileUrl: row.profile_url,
+      message: row.message,
+    }));
+  }
+
   async markSent(outreachMessageId: string) {
     const client = await this.pool.connect();
     try {

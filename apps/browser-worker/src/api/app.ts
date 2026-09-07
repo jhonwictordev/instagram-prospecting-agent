@@ -9,6 +9,7 @@ import type { Repository } from '../database/repository.js';
 import { sendingAllowed } from '../domain.js';
 import type { InstagramService } from '../instagram/service.js';
 import { analyzeSchema, approvalSchema, messageSchema, searchSchema } from './schemas.js';
+import { reviewUi } from './review-ui.js';
 
 const asyncRoute =
   (handler: (request: Request, response: Response) => Promise<unknown>) =>
@@ -17,6 +18,7 @@ const asyncRoute =
 
 export function createApp(config: Config, instagram: InstagramService, repository?: Repository) {
   const app = express();
+  let emergencyStop = config.EMERGENCY_STOP;
   app.disable('x-powered-by');
   app.use(
     helmet(),
@@ -30,7 +32,10 @@ export function createApp(config: Config, instagram: InstagramService, repositor
   );
 
   app.get('/health', (_request, response) =>
-    response.json({ status: 'ok', service: 'browser-worker', timestamp: new Date().toISOString() }),
+    response.json({ status: 'ok', service: 'browser-worker', emergencyStop, timestamp: new Date().toISOString() }),
+  );
+  app.get('/review', (request, response) =>
+    response.type('html').send(reviewUi(request.query.demo === '1')),
   );
 
   app.use((request, response, next) => {
@@ -45,6 +50,18 @@ export function createApp(config: Config, instagram: InstagramService, repositor
     '/session/status',
     asyncRoute(async (_request, response) => response.json(await instagram.status())),
   );
+  app.get(
+    '/messages/prepared',
+    asyncRoute(async (_request, response) => {
+      if (!repository) return response.status(503).json({ status: 'database_unavailable' });
+      response.json({ messages: await repository.listPrepared() });
+    }),
+  );
+  app.get('/controls', (_request, response) => response.json({ emergencyStop }));
+  app.post('/controls/emergency-stop', (request, response) => {
+    emergencyStop = request.body?.active !== false;
+    response.json({ emergencyStop, source: 'runtime' });
+  });
   app.post(
     '/diagnostics/message-ui',
     asyncRoute(async (request, response) => {
@@ -94,7 +111,7 @@ export function createApp(config: Config, instagram: InstagramService, repositor
           mode: input.mode,
           approved: input.approved,
           automaticEnabled: config.AUTOMATIC_MODE_ENABLED,
-          emergencyStop: config.EMERGENCY_STOP,
+          emergencyStop,
         })
       ) {
         return response
@@ -111,7 +128,7 @@ export function createApp(config: Config, instagram: InstagramService, repositor
     '/message/approve',
     asyncRoute(async (request, response) => {
       const input = approvalSchema.parse(request.body);
-      if (config.EMERGENCY_STOP) {
+      if (emergencyStop) {
         return response.status(403).json({ success: false, status: 'emergency_stop' });
       }
       if (!repository) {
