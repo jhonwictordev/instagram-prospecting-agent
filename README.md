@@ -1,5 +1,7 @@
 # Instagram Prospecting Agent
 
+[![CI](https://github.com/jhonwictordev/instagram-prospecting-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/jhonwictordev/instagram-prospecting-agent/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e.svg)](LICENSE) [![Demo](https://img.shields.io/badge/demo-no%20account%20required-0ea5e9.svg)](https://jhonwictordev.github.io/instagram-prospecting-agent/) [![Outreach](https://img.shields.io/badge/outreach-human%20approval%20required-f59e0b.svg)](#safe-demonstration-and-review-interface)
+
 > See the [portfolio overview](docs/portfolio-overview.md) for architecture, approval flow and public demonstration boundaries.
 
 A conservative, locally run automation for finding public business profiles, qualifying them, and preparing messages. Sending is blocked by default. This project does not solve CAPTCHAs, use stealth/proxies, or bypass Instagram limits or interventions. Review Instagram's Terms and applicable laws (including data-protection regulations) before using it.
