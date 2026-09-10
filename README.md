@@ -1,5 +1,7 @@
 # Instagram Prospecting Agent
 
+> See the [portfolio overview](docs/portfolio-overview.md) for architecture, approval flow and public demonstration boundaries.
+
 A conservative, locally run automation for finding public business profiles, qualifying them, and preparing messages. Sending is blocked by default. This project does not solve CAPTCHAs, use stealth/proxies, or bypass Instagram limits or interventions. Review Instagram's Terms and applicable laws (including data-protection regulations) before using it.
 
 ## Safe demonstration and review interface
